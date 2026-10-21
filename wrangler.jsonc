@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xdjx-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    // pnpm wrangler kv namespace create KV
+    { "binding": "KV", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+  // 以下均为默认值；除 ADMIN_USER_ID 外都可通过 /xdjx_config 覆盖（存于 KV）
+  // Secrets（wrangler secret put）：BOT_TOKEN、GEMINI_API_KEY
+  "vars": {
+    "ADMIN_USER_ID": "",
+    "ALLOWED_CHAT_IDS": "",
+    "SYSTEM_PROMPT": "你是一个 Telegram 群聊助手。用户会回复一条消息（可能包含文字和图片）请你解读。请用简体中文简洁、准确地回答，不使用 Markdown 格式。",
+    "MODEL": "gemini-4-argon",
+    "THINKING_LEVEL": "low",
+    "MAX_OUTPUT_TOKENS": "2048",
+    "MAX_INPUT_CHARS": "8000",
+    "MAX_REPLY_CHARS": "4000",
+    "BILLING_CHAT_ID": "",
+    "PRICE_INPUT_PER_M": "2",
+    "PRICE_OUTPUT_PER_M": "10",
+    "PRICE_CACHED_PER_M": "0.1"
+  }
+}
