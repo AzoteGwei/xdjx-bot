@@ -2,6 +2,7 @@ import type { Message } from "grammy/types";
 import { describe, expect, it } from "vitest";
 import { estimateCost } from "../src/billing";
 import { FIELDS, fieldAt, mergeConfig, parseValue, resolveConfig, type LoadedConfig, type RawConfig } from "../src/config";
+import { hintCommands } from "../src/commandHints";
 import { isAdmin, renderAwait, renderField, renderHome } from "../src/configPanel";
 import { extractImage } from "../src/media";
 import { splitText } from "../src/telegram";
@@ -124,6 +125,14 @@ describe("config panel", () => {
     const home = renderHome(loaded).keyboard.inline_keyboard.flat().map((b) => b.text);
     expect(home.find((t) => t.startsWith("模型"))).toContain("✎");
     expect(renderField(loaded, 2).text).toContain("默认值");
+  });
+});
+
+describe("command hints", () => {
+  it("only hints /xdjx in groups and admin commands in private chats", () => {
+    expect(hintCommands("supergroup").map((c) => c.command)).toEqual(["xdjx"]);
+    expect(hintCommands("private").map((c) => c.command)).toContain("xdjx_config");
+    for (const c of [...hintCommands("group"), ...hintCommands("private")]) expect(c.command).toMatch(/^[a-z0-9_]{1,32}$/);
   });
 });
 

@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
+import { handleHint } from "./commandHints";
 import { handlePanelCallback, handlePanelInput, openPanel } from "./configPanel";
 import { handleXdjx } from "./xdjx";
 
@@ -16,6 +17,8 @@ export async function createBot(env: Env): Promise<Bot> {
 
   bot.command("xdjx", (ctx) => handleXdjx(ctx, env));
   bot.command("xdjx_config", (ctx) => openPanel(ctx, env));
+  bot.command("xdjx_hinton", (ctx) => handleHint(ctx, env, true));
+  bot.command("xdjx_hintoff", (ctx) => handleHint(ctx, env, false));
   bot.callbackQuery(/^c:/, (ctx) => handlePanelCallback(ctx, env));
   bot.on("message:text", async (ctx, next) => {
     if (!(await handlePanelInput(ctx, env))) await next();
