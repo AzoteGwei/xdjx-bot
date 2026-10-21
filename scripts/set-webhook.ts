@@ -33,9 +33,6 @@ const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
 });
 console.log(await res.json());
 
-const commands = await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({ commands: [{ command: "xdjx", description: "回复一条消息，让 AI 解读" }] }),
-});
+// 命令提示由 /xdjx_hinton、/xdjx_hintoff 按 chat 注册；清空默认 scope，否则 hintoff 后仍会回落到默认命令。
+const commands = await fetch(`https://api.telegram.org/bot${token}/deleteMyCommands`, { method: "POST" });
 console.log(await commands.json());
