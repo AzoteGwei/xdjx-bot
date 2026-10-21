@@ -1,6 +1,14 @@
-# xdjx_bot
+# xdjx-bot
 
-A Telegram bot running on Cloudflare Workers that calls the Gemini API (Google AI Studio) through its Interactions API.
+一个运行在 Cloudflare Workers 上的 Telegram 群聊 Bot。在群里回复一条消息并发送 `/xdjx`，Bot 会通过 Gemini API（Google AI Studio，Interactions API）解读这条消息，并流式回复。
+
+功能：
+
+- 支持文字、图片、图文消息和静态贴纸，可在命令后附加指令
+- 流式输出，边生成边更新回复
+- 群组白名单，支持多个管理员
+- 在 Telegram 内用按钮面板修改配置，修改存放在 KV 中，无需重新部署
+- 每次调用都推送计费日志（tokens、预估成本、累计成本）
 
 ## 用法
 
@@ -23,6 +31,7 @@ A Telegram bot running on Cloudflare Workers that calls the Gemini API (Google A
 ## 部署
 
 ```sh
+git clone git@github.com:AzoteGwei/xdjx-bot.git && cd xdjx-bot
 pnpm i
 cp wrangler.example.jsonc wrangler.jsonc  # wrangler.jsonc 已 gitignore，存放本地真实配置
 pnpm wrangler kv namespace create KV      # 把 id 填入 wrangler.jsonc
@@ -43,6 +52,10 @@ Webhook 的 `secret_token` 由 `BOT_TOKEN` 派生（见 `src/webhook.ts`），�
 ```sh
 pnpm dev          # 本地运行（可配合 cloudflared tunnel + webhook:set 联调）
 pnpm test         # 单元测试
-pnpm typecheck    # wrangler types + tsc
+pnpm typecheck    # wrangler types + tsc（本地没有 .dev.vars 时，生成的类型会缺少 secret，可只跑 pnpm tsc --noEmit）
 pnpm wrangler tail
 ```
+
+## License
+
+[BSD 2-Clause](LICENSE)
