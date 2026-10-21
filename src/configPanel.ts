@@ -137,6 +137,7 @@ async function renderBilling(kv: KVNamespace, confirmReset = false, notice?: str
     `调用次数：${t.calls}`,
     `Input tokens：${t.input}`,
     `Output tokens（含 thinking）：${t.output}`,
+    `搜索次数：${t.searches ?? 0}`,
     `累计预估成本：${formatUsd(t.cost)}`,
     notice ?? "",
   ].join("\n");

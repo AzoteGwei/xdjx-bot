@@ -8,6 +8,7 @@
 - 流式输出，边生成边更新回复
 - 群组白名单，支持多个管理员
 - 在 Telegram 内用按钮面板修改配置，修改存放在 KV 中，无需重新部署
+- 可选联网搜索（Grounding with Google Search），回复末尾附来源链接
 - 每次调用都推送计费日志（tokens、预估成本、累计成本）
 
 ## 用法
@@ -17,6 +18,8 @@
 - **命令提示**：管理员在某个 chat 中发送 `/xdjx_hinton`，为该 chat 注册输入框的命令提示（群里只提示 `/xdjx`，私聊提示管理命令）；`/xdjx_hintoff` 移除。
 - **计费**：每次调用都向 `BILLING_CHAT_ID`（可逗号分隔多个）推送详细日志，包括 tokens、预估成本、累计成本、耗时和错误信息。推送目标是用户（正数 ID）时，该用户必须先私聊 Bot 点 Start；推送失败会写入 Worker 日志，也可以在面板「计费统计 → 测试推送」里直接看到错误。
 
+- **联网搜索**：`GOOGLE_SEARCH`（`on` / `off`，默认 `off`）开启 Grounding with Google Search，可在面板中切换。开启后回复末尾附最多 5 条来源。搜索按次计费：每月 5,000 次免费（同一项目下所有 Gemini 3 及更新模型共享），超出后 $14 / 1,000 次（`PRICE_SEARCH_PER_K`）。Bot 无法得知免费额度的剩余量，预估成本一律按单价计算，计费日志会记录搜索次数。
+
 所有 ID 列表（`ALLOWED_CHAT_IDS`、`ADMIN_USER_ID`、`BILLING_CHAT_ID`）都支持半角、全角逗号或空白分隔。
 
 ## 配置
@@ -24,7 +27,7 @@
 | 来源 | 内容 |
 |---|---|
 | Secret | `BOT_TOKEN`、`GEMINI_API_KEY`（仅此两项） |
-| `wrangler.jsonc` → `vars`（由 `wrangler.example.jsonc` 复制，不入库） | 默认值：`ADMIN_USER_ID`、`ALLOWED_CHAT_IDS`、`SYSTEM_PROMPT`、`MODEL`、`THINKING_LEVEL`、`MAX_OUTPUT_TOKENS`、`MAX_INPUT_CHARS`、`MAX_REPLY_CHARS`、`BILLING_CHAT_ID`、`PRICE_*_PER_M` |
+| `wrangler.jsonc` → `vars`（由 `wrangler.example.jsonc` 复制，不入库） | 默认值：`ADMIN_USER_ID`、`ALLOWED_CHAT_IDS`、`SYSTEM_PROMPT`、`MODEL`、`THINKING_LEVEL`、`GOOGLE_SEARCH`、`MAX_OUTPUT_TOKENS`、`MAX_INPUT_CHARS`、`MAX_REPLY_CHARS`、`BILLING_CHAT_ID`、`PRICE_*` |
 | KV `cfg:overrides` | `/xdjx_config` 中的修改，覆盖 vars；可单项恢复默认。`ADMIN_USER_ID` 只能在 vars 中修改 |
 
 默认模型为 `gemini-4-argon`（无免费层，需付费 key）。默认价格是 2026-11-30 之前的 $2 / $10 / $0.1（input / output / cached，每 1M tokens）；2026-12-01 起涨为 $4 / $20 / $0.2，届时请在面板里更新。

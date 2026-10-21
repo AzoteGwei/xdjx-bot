@@ -7,13 +7,14 @@ import { isAdmin, renderAwait, renderField, renderHome } from "../src/configPane
 import { extractImage } from "../src/media";
 import { splitText } from "../src/telegram";
 import { deriveWebhookSecret } from "../src/webhook";
-import { buildPrompt } from "../src/xdjx";
+import { buildPrompt, formatSources } from "../src/xdjx";
 
 const defaults: RawConfig = {
   ALLOWED_CHAT_IDS: "-1001,-1002",
   SYSTEM_PROMPT: "sys",
   MODEL: "gemini-4-argon",
   THINKING_LEVEL: "low",
+  GOOGLE_SEARCH: "off",
   MAX_OUTPUT_TOKENS: "2048",
   MAX_INPUT_CHARS: "8000",
   MAX_REPLY_CHARS: "4000",
@@ -21,6 +22,7 @@ const defaults: RawConfig = {
   PRICE_INPUT_PER_M: "2",
   PRICE_OUTPUT_PER_M: "10",
   PRICE_CACHED_PER_M: "0.1",
+  PRICE_SEARCH_PER_K: "14",
 };
 
 const field = (key: string) => fieldAt(FIELDS.findIndex((f) => f.key === key))!;
@@ -55,8 +57,12 @@ describe("config", () => {
 describe("billing", () => {
   it("charges cached at cached rate and thinking at output rate", () => {
     const cfg = resolveConfig(defaults);
-    const cost = estimateCost({ input: 1_000_000, cached: 500_000, output: 100_000, thought: 100_000, total: 0 }, cfg);
+    const cost = estimateCost({ input: 1_000_000, cached: 500_000, output: 100_000, thought: 100_000, total: 0, searches: 0 }, cfg);
     expect(cost).toBeCloseTo(0.5 * 2 + 0.5 * 0.1 + 0.2 * 10);
+    const search = estimateCost({ input: 0, cached: 0, output: 0, thought: 0, total: 0, searches: 2 }, cfg);
+    expect(search).toBeCloseTo(0.028);
+    expect(resolveConfig(defaults).googleSearch).toBe(false);
+    expect(resolveConfig({ ...defaults, GOOGLE_SEARCH: "on" }).googleSearch).toBe(true);
   });
 });
 
@@ -89,6 +95,14 @@ describe("media", () => {
     expect(inputChars).toBe(3);
     expect(texts).toHaveLength(3);
     expect(texts[2]).toContain("翻译");
+  });
+
+  it("formats at most five deduplicated sources", () => {
+    expect(formatSources([])).toBe("");
+    const many = Array.from({ length: 7 }, (_, i) => ({ url: `https://e.com/${i}`, title: i ? `t${i}` : undefined }));
+    const out = formatSources(many);
+    expect(out).toContain("来源：\n1. https://e.com/0\n2. t1 https://e.com/1");
+    expect(out).not.toContain("e.com/5");
   });
 });
 

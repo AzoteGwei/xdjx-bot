@@ -9,18 +9,22 @@ export interface BillingTotals {
   calls: number;
   input: number;
   output: number;
+  /** 旧数据没有此字段 */
+  searches?: number;
   cost: number;
   since: string;
 }
 
 /** thinking tokens 按输出价计费；缓存命中部分按缓存价计费。 */
+/** 搜索按次计费，未扣除每月免费额度（与同一项目的其他调用共享，Bot 无从得知剩余量）。 */
 export function estimateCost(usage: GeminiUsage, config: Config): number {
   const uncached = Math.max(0, usage.input - usage.cached);
   return (
     (uncached * config.priceInputPerM +
       usage.cached * config.priceCachedPerM +
       (usage.output + usage.thought) * config.priceOutputPerM) /
-    1e6
+      1e6 +
+    (usage.searches * config.priceSearchPerK) / 1e3
   );
 }
 
@@ -45,6 +49,7 @@ export async function addToTotals(kv: KVNamespace, usage: GeminiUsage, cost: num
   t.calls += 1;
   t.input += usage.input;
   t.output += usage.output + usage.thought;
+  t.searches = (t.searches ?? 0) + usage.searches;
   t.cost += cost;
   await kv.put(TOTAL_KEY, JSON.stringify(t));
   return t;
@@ -60,6 +65,7 @@ export interface BillingLog {
   targetMessageId: number;
   model: string;
   thinkingLevel: string;
+  googleSearch: boolean;
   inputChars: number;
   instructionChars: number;
   image?: { mimeType: string; bytes: number };
@@ -79,7 +85,7 @@ export function formatBillingLog(log: BillingLog): string {
     `群组：${log.chat.title ?? ""} (${log.chat.id})`,
     `用户：${log.user.name}${log.user.username ? ` @${log.user.username}` : ""} (${log.user.id})`,
     `目标消息：${log.targetMessageId}`,
-    `模型：${log.model} · thinking=${log.thinkingLevel}`,
+    `模型：${log.model} · thinking=${log.thinkingLevel} · 搜索 ${log.googleSearch ? "开" : "关"}`,
     `输入：文字 ${log.inputChars} 字符 · 指令 ${log.instructionChars} 字符 · 图片 ${
       log.image ? `${log.image.mimeType} ${(log.image.bytes / 1024).toFixed(1)}KB` : "无"
     }`,
@@ -90,12 +96,13 @@ export function formatBillingLog(log: BillingLog): string {
     lines.push(
       `Tokens：input ${u.input} (cached ${u.cached}) · output ${u.output} · thought ${u.thought} · total ${u.total}`,
     );
+    if (u.searches) lines.push(`搜索：${u.searches} 次`);
   }
   if (log.cost !== undefined) lines.push(`预估成本：${formatUsd(log.cost)}`);
   if (log.replyChars !== undefined) lines.push(`回复长度：${log.replyChars} 字符`);
   if (log.totals) {
     lines.push(
-      `累计：${log.totals.calls} 次 · in ${log.totals.input} · out ${log.totals.output} · ${formatUsd(log.totals.cost)}（自 ${log.totals.since.slice(0, 10)}）`,
+      `累计：${log.totals.calls} 次 · in ${log.totals.input} · out ${log.totals.output} · 搜索 ${log.totals.searches ?? 0} · ${formatUsd(log.totals.cost)}（自 ${log.totals.since.slice(0, 10)}）`,
     );
   }
   if (log.error) lines.push(`错误：${log.error}`);

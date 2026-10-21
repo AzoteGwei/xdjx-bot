@@ -8,12 +8,20 @@ export interface GeminiUsage {
   output: number;
   thought: number;
   total: number;
+  /** Google Search 调用次数（按次计费） */
+  searches: number;
+}
+
+export interface Citation {
+  url: string;
+  title?: string;
 }
 
 export interface GeminiResult {
   text: string;
   status: string;
   usage: GeminiUsage;
+  citations: Citation[];
   interactionId?: string;
 }
 
@@ -28,6 +36,7 @@ interface RawUsage {
   total_output_tokens?: number;
   total_thought_tokens?: number;
   total_tokens?: number;
+  grounding_tool_count?: Array<{ type?: string; count?: number }>;
 }
 
 function toUsage(u: RawUsage | undefined): GeminiUsage {
@@ -37,6 +46,9 @@ function toUsage(u: RawUsage | undefined): GeminiUsage {
     output: u?.total_output_tokens ?? 0,
     thought: u?.total_thought_tokens ?? 0,
     total: u?.total_tokens ?? 0,
+    searches: (u?.grounding_tool_count ?? [])
+      .filter((g) => g.type === "google_search")
+      .reduce((n, g) => n + (g.count ?? 0), 0),
   };
 }
 
@@ -56,6 +68,7 @@ export async function generateStream(
     model: config.model,
     input,
     system_instruction: config.systemPrompt || undefined,
+    tools: config.googleSearch ? [{ type: "google_search" }] : undefined,
     store: false,
     stream: true,
     generation_config: {
@@ -68,6 +81,7 @@ export async function generateStream(
   let status = "unknown";
   let usage: RawUsage | undefined;
   let interactionId: string | undefined;
+  const citations = new Map<string, Citation>();
   for await (const event of stream) {
     switch (event.event_type) {
       case "interaction.created":
@@ -78,6 +92,11 @@ export async function generateStream(
         if (event.delta.type === "text" && event.delta.text) {
           text += event.delta.text;
           await onText(text);
+        }
+        if (event.delta.type === "text_annotation_delta") {
+          for (const a of event.delta.annotations ?? []) {
+            if (a.type === "url_citation" && a.url && !citations.has(a.url)) citations.set(a.url, { url: a.url, title: a.title });
+          }
         }
         break;
       case "step.stop":
@@ -96,5 +115,5 @@ export async function generateStream(
         throw new Error(`Gemini stream error: ${event.error?.code ?? ""} ${event.error?.message ?? ""}`.trim());
     }
   }
-  return { text, status, interactionId, usage: toUsage(usage) };
+  return { text, status, interactionId, usage: toUsage(usage), citations: [...citations.values()] };
 }

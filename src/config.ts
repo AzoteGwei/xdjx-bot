@@ -29,6 +29,7 @@ export const FIELDS = [
     ],
   },
   { key: "THINKING_LEVEL", label: "思考等级", type: "enum", options: ["minimal", "low", "medium", "high"] },
+  { key: "GOOGLE_SEARCH", label: "联网搜索", type: "enum", options: ["off", "on"] },
   { key: "MAX_OUTPUT_TOKENS", label: "最大输出 tokens", type: "int", min: 1, max: 65536 },
   { key: "MAX_INPUT_CHARS", label: "最大输入字符数", type: "int", min: 1, max: 100000 },
   { key: "MAX_REPLY_CHARS", label: "最大回复字符数", type: "int", min: 1, max: 40000 },
@@ -36,6 +37,7 @@ export const FIELDS = [
   { key: "PRICE_INPUT_PER_M", label: "输入单价 $/1M", type: "float", min: 0 },
   { key: "PRICE_OUTPUT_PER_M", label: "输出单价 $/1M", type: "float", min: 0 },
   { key: "PRICE_CACHED_PER_M", label: "缓存单价 $/1M", type: "float", min: 0 },
+  { key: "PRICE_SEARCH_PER_K", label: "搜索单价 $/1K", type: "float", min: 0 },
 ] as const satisfies readonly FieldDef[];
 
 export type Field = (typeof FIELDS)[number] & FieldDef;
@@ -48,6 +50,7 @@ export interface Config {
   systemPrompt: string;
   model: string;
   thinkingLevel: string;
+  googleSearch: boolean;
   maxOutputTokens: number;
   maxInputChars: number;
   maxReplyChars: number;
@@ -55,6 +58,7 @@ export interface Config {
   priceInputPerM: number;
   priceOutputPerM: number;
   priceCachedPerM: number;
+  priceSearchPerK: number;
 }
 
 export interface LoadedConfig {
@@ -122,6 +126,7 @@ export function resolveConfig(raw: RawConfig): Config {
     systemPrompt: raw.SYSTEM_PROMPT,
     model: raw.MODEL || "gemini-4-argon",
     thinkingLevel: raw.THINKING_LEVEL || "low",
+    googleSearch: raw.GOOGLE_SEARCH === "on",
     maxOutputTokens: num(raw.MAX_OUTPUT_TOKENS, 2048),
     maxInputChars: num(raw.MAX_INPUT_CHARS, 8000),
     maxReplyChars: num(raw.MAX_REPLY_CHARS, 4000),
@@ -129,6 +134,7 @@ export function resolveConfig(raw: RawConfig): Config {
     priceInputPerM: num(raw.PRICE_INPUT_PER_M, 0),
     priceOutputPerM: num(raw.PRICE_OUTPUT_PER_M, 0),
     priceCachedPerM: num(raw.PRICE_CACHED_PER_M, 0),
+    priceSearchPerK: num(raw.PRICE_SEARCH_PER_K, 0),
   };
 }
 

@@ -2,7 +2,7 @@ import type { CommandContext, Context } from "grammy";
 import type { Message } from "grammy/types";
 import { addToTotals, estimateCost, pushBillingLog, type BillingLog } from "./billing";
 import { loadConfig } from "./config";
-import { generateStream } from "./gemini";
+import { generateStream, type Citation } from "./gemini";
 import { downloadImage, extractImage } from "./media";
 import { StreamingReply } from "./streamReply";
 import { ignoreErrors } from "./telegram";
@@ -30,6 +30,15 @@ export function buildPrompt(target: Message, quote: string | undefined, instruct
   if (quote) texts.push(`[用户引用的片段]\n${quote.slice(0, maxChars)}`);
   if (instruction) texts.push(`[用户指令]\n${instruction.slice(0, maxChars)}`);
   return { texts, inputChars: body.length };
+}
+
+/** 回复末尾附上的来源列表，最多 MAX_SOURCES 条。 */
+const MAX_SOURCES = 5;
+
+export function formatSources(citations: Citation[]): string {
+  if (citations.length === 0) return "";
+  const lines = citations.slice(0, MAX_SOURCES).map((c, i) => `${i + 1}. ${c.title ? `${c.title} ` : ""}${c.url}`);
+  return `\n\n来源：\n${lines.join("\n")}`;
 }
 
 export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promise<void> {
@@ -61,6 +70,7 @@ export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promis
     targetMessageId: target.message_id,
     model: config.model,
     thinkingLevel: config.thinkingLevel,
+    googleSearch: config.googleSearch,
     inputChars,
     instructionChars: instruction.length,
     durationMs: 0,
@@ -88,6 +98,7 @@ export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promis
 
     let text = result.text.trim() || "（模型没有返回内容）";
     if (result.status === "incomplete") text += "\n…（输出达到长度上限，已截断）";
+    text += formatSources(result.citations);
     log.replyChars = await reply.finish(text);
   } catch (e) {
     log.status = log.status === "pending" ? "error" : log.status;
