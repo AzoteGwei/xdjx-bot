@@ -1,9 +1,18 @@
 import { GrammyError, type Api } from "grammy";
+import type { MessageEntity } from "grammy/types";
 import { splitText, TG_TEXT_LIMIT } from "./telegram";
 
 /** 群聊每分钟约 20 条消息/编辑的限额，按 3s 节流。 */
 const EDIT_INTERVAL_MS = 3000;
 const CURSOR = " ▍";
+
+/** 附在最后一条回复末尾的页脚（不计入 maxChars）；entities 的 offset 相对页脚开头。 */
+export interface Footer {
+  text: string;
+  entities: MessageEntity[];
+}
+
+const FOOTER_SEP = "\n\n";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,15 +42,25 @@ export class StreamingReply {
   }
 
   /** 最终渲染，必须送达；返回实际发出的字符数。 */
-  async finish(text: string): Promise<number> {
+  async finish(text: string, footer?: Footer): Promise<number> {
     const wait = this.nextAt - Date.now();
     if (wait > 0) await sleep(wait);
-    return this.render(text, true);
+    return this.render(text, true, footer);
   }
 
-  private async render(text: string, final: boolean): Promise<number> {
+  private async render(text: string, final: boolean, footer?: Footer): Promise<number> {
     const chunks = splitText(text, this.maxChars, TG_TEXT_LIMIT - CURSOR.length);
     if (!final && chunks.length > 0) chunks[chunks.length - 1] += CURSOR;
+    const entities = new Map<number, MessageEntity[]>();
+    if (footer) {
+      // 能放进最后一条就接在末尾，否则单独成一条
+      const last = chunks.length - 1;
+      const fits = last >= 0 && chunks[last]!.length + FOOTER_SEP.length + footer.text.length <= TG_TEXT_LIMIT;
+      const index = fits ? last : chunks.length;
+      const offset = fits ? chunks[last]!.length + FOOTER_SEP.length : 0;
+      chunks[index] = fits ? chunks[last]! + FOOTER_SEP + footer.text : footer.text;
+      entities.set(index, footer.entities.map((e) => ({ ...e, offset: e.offset + offset })));
+    }
     try {
       for (const [i, chunk] of chunks.entries()) {
         const prev = this.sent[i];
@@ -49,7 +68,10 @@ export class StreamingReply {
         if (prev) {
           await this.call(final, () =>
             this.api
-              .editMessageText(this.chatId, prev.id, chunk, { link_preview_options: { is_disabled: true } })
+              .editMessageText(this.chatId, prev.id, chunk, {
+                entities: entities.get(i),
+                link_preview_options: { is_disabled: true },
+              })
               .catch((e) => {
                 // Telegram 会裁剪首尾空白，可能判定为内容未变化
                 if (!(e instanceof GrammyError && e.description.includes("message is not modified"))) throw e;
@@ -60,6 +82,7 @@ export class StreamingReply {
           const msg = await this.call(final, () =>
             this.api.sendMessage(this.chatId, chunk, {
               reply_parameters: { message_id: this.replyTo, allow_sending_without_reply: true },
+              entities: entities.get(i),
               link_preview_options: { is_disabled: true },
             }),
           );

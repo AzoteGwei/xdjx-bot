@@ -97,12 +97,16 @@ describe("media", () => {
     expect(texts[2]).toContain("翻译");
   });
 
-  it("formats at most five deduplicated sources", () => {
-    expect(formatSources([])).toBe("");
-    const many = Array.from({ length: 7 }, (_, i) => ({ url: `https://e.com/${i}`, title: i ? `t${i}` : undefined }));
-    const out = formatSources(many);
-    expect(out).toContain("来源：\n1. https://e.com/0\n2. t1 https://e.com/1");
-    expect(out).not.toContain("e.com/5");
+  it("formats sources as linked domains", () => {
+    expect(formatSources([])).toBeUndefined();
+    const many = Array.from({ length: 7 }, (_, i) => ({ url: `https://r.example/${i}`, title: i ? `site${i}.com` : undefined }));
+    const footer = formatSources(many)!;
+    expect(footer.text).toBe("来源：r.example · site1.com · site2.com · site3.com · site4.com");
+    expect(footer.entities).toHaveLength(5);
+    const [first, second] = footer.entities as Array<{ offset: number; length: number; url: string }>;
+    expect(footer.text.slice(first!.offset, first!.offset + first!.length)).toBe("r.example");
+    expect(footer.text.slice(second!.offset, second!.offset + second!.length)).toBe("site1.com");
+    expect(second!.url).toBe("https://r.example/1");
   });
 });
 

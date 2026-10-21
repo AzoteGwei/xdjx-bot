@@ -1,10 +1,10 @@
 import type { CommandContext, Context } from "grammy";
-import type { Message } from "grammy/types";
+import type { Message, MessageEntity } from "grammy/types";
 import { addToTotals, estimateCost, pushBillingLog, type BillingLog } from "./billing";
 import { loadConfig } from "./config";
 import { generateStream, type Citation } from "./gemini";
 import { downloadImage, extractImage } from "./media";
-import { StreamingReply } from "./streamReply";
+import { StreamingReply, type Footer } from "./streamReply";
 import { ignoreErrors } from "./telegram";
 
 const USAGE = "用法：回复一条消息并发送 /xdjx（可在命令后附加指令）。";
@@ -32,13 +32,32 @@ export function buildPrompt(target: Message, quote: string | undefined, instruct
   return { texts, inputChars: body.length };
 }
 
-/** 回复末尾附上的来源列表，最多 MAX_SOURCES 条。 */
+/** 回复末尾附上的来源，最多 MAX_SOURCES 条。 */
 const MAX_SOURCES = 5;
 
-export function formatSources(citations: Citation[]): string {
-  if (citations.length === 0) return "";
-  const lines = citations.slice(0, MAX_SOURCES).map((c, i) => `${i + 1}. ${c.title ? `${c.title} ` : ""}${c.url}`);
-  return `\n\n来源：\n${lines.join("\n")}`;
+/** Grounding 的 url 是 Google 跳转链接，来源域名在 title 里；没有 title 时退回链接主机名。 */
+function sourceLabel(c: Citation): string {
+  const title = c.title?.trim();
+  if (title) return title;
+  try {
+    return new URL(c.url).hostname;
+  } catch {
+    return "链接";
+  }
+}
+
+/** 来源页脚：只显示域名，整段文字用 text_link 指向完整网址。 */
+export function formatSources(citations: Citation[]): Footer | undefined {
+  if (citations.length === 0) return undefined;
+  let text = "来源：";
+  const entities: MessageEntity[] = [];
+  for (const [i, c] of citations.slice(0, MAX_SOURCES).entries()) {
+    if (i > 0) text += " · ";
+    const label = sourceLabel(c);
+    entities.push({ type: "text_link", offset: text.length, length: label.length, url: c.url });
+    text += label;
+  }
+  return { text, entities };
 }
 
 export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promise<void> {
@@ -98,8 +117,7 @@ export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promis
 
     let text = result.text.trim() || "（模型没有返回内容）";
     if (result.status === "incomplete") text += "\n…（输出达到长度上限，已截断）";
-    text += formatSources(result.citations);
-    log.replyChars = await reply.finish(text);
+    log.replyChars = await reply.finish(text, formatSources(result.citations));
   } catch (e) {
     log.status = log.status === "pending" ? "error" : log.status;
     log.error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
