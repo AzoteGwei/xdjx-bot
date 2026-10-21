@@ -2,9 +2,10 @@ import type { CommandContext, Context } from "grammy";
 import type { Message } from "grammy/types";
 import { addToTotals, estimateCost, pushBillingLog, type BillingLog } from "./billing";
 import { loadConfig } from "./config";
-import { generate } from "./gemini";
+import { generateStream } from "./gemini";
 import { downloadImage, extractImage } from "./media";
-import { ignoreErrors, splitText } from "./telegram";
+import { StreamingReply } from "./streamReply";
+import { ignoreErrors } from "./telegram";
 
 const USAGE = "用法：回复一条消息并发送 /xdjx（可在命令后附加指令）。";
 
@@ -68,12 +69,18 @@ export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promis
 
   await ignoreErrors(ctx.replyWithChatAction("typing"));
   const typing = setInterval(() => void ignoreErrors(ctx.replyWithChatAction("typing")), 4500);
+  const reply = new StreamingReply(ctx.api, chat.id, target.message_id, config.maxReplyChars);
+  let partial = "";
   try {
     const image = imageRef ? await downloadImage(ctx.api, env.BOT_TOKEN, imageRef) : undefined;
     if (image) log.image = { mimeType: image.mimeType, bytes: image.bytes };
     if (texts.length === 0) texts.push("[被回复的消息为一张图片]");
 
-    const result = await generate(env.GEMINI_API_KEY, config, { texts, image });
+    const result = await generateStream(env.GEMINI_API_KEY, config, { texts, image }, async (text) => {
+      partial = text;
+      clearInterval(typing);
+      await reply.update(text.trim());
+    });
     log.status = result.status;
     log.usage = result.usage;
     log.cost = estimateCost(result.usage, config);
@@ -81,19 +88,13 @@ export async function handleXdjx(ctx: CommandContext<Context>, env: Env): Promis
 
     let text = result.text.trim() || "（模型没有返回内容）";
     if (result.status === "incomplete") text += "\n…（输出达到长度上限，已截断）";
-    const chunks = splitText(text, config.maxReplyChars);
-    log.replyChars = chunks.reduce((n, c) => n + c.length, 0);
-    for (const chunk of chunks) {
-      await ctx.api.sendMessage(chat.id, chunk, {
-        reply_parameters: { message_id: target.message_id, allow_sending_without_reply: true },
-        link_preview_options: { is_disabled: true },
-      });
-    }
+    log.replyChars = await reply.finish(text);
   } catch (e) {
     log.status = log.status === "pending" ? "error" : log.status;
     log.error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     console.error("xdjx failed:", e);
-    await ignoreErrors(ctx.reply("出错了，请稍后再试。", { reply_parameters: { message_id: msg.message_id } }));
+    if (reply.started) await ignoreErrors(reply.finish(`${partial.trim()}\n…（生成中断，请稍后再试）`));
+    else await ignoreErrors(ctx.reply("出错了，请稍后再试。", { reply_parameters: { message_id: msg.message_id } }));
   } finally {
     clearInterval(typing);
     log.durationMs = Date.now() - started;

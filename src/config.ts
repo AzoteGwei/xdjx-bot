@@ -1,4 +1,4 @@
-export type FieldType = "text" | "enum" | "int" | "float" | "idlist" | "id";
+export type FieldType = "text" | "enum" | "int" | "float" | "idlist";
 
 interface FieldDef {
   key: string;
@@ -32,7 +32,7 @@ export const FIELDS = [
   { key: "MAX_OUTPUT_TOKENS", label: "最大输出 tokens", type: "int", min: 1, max: 65536 },
   { key: "MAX_INPUT_CHARS", label: "最大输入字符数", type: "int", min: 1, max: 100000 },
   { key: "MAX_REPLY_CHARS", label: "最大回复字符数", type: "int", min: 1, max: 40000 },
-  { key: "BILLING_CHAT_ID", label: "计费推送 chat", type: "id" },
+  { key: "BILLING_CHAT_ID", label: "计费推送 chat", type: "idlist" },
   { key: "PRICE_INPUT_PER_M", label: "输入单价 $/1M", type: "float", min: 0 },
   { key: "PRICE_OUTPUT_PER_M", label: "输出单价 $/1M", type: "float", min: 0 },
   { key: "PRICE_CACHED_PER_M", label: "缓存单价 $/1M", type: "float", min: 0 },
@@ -51,7 +51,7 @@ export interface Config {
   maxOutputTokens: number;
   maxInputChars: number;
   maxReplyChars: number;
-  billingChatId: number | null;
+  billingChatIds: number[];
   priceInputPerM: number;
   priceOutputPerM: number;
   priceCachedPerM: number;
@@ -74,7 +74,16 @@ export function fieldIndex(key: ConfigKey): number {
   return FIELDS.findIndex((f) => f.key === key);
 }
 
-/** 校验并规范化用户输入；"-" 表示清空（仅 idlist / id）。 */
+/** 逗号（含全角）或空白分隔的数字 ID 列表，忽略非法项并去重。 */
+export function parseIdList(s: string): number[] {
+  const ids = s
+    .split(/[\s,，]+/)
+    .filter((id) => /^-?\d+$/.test(id))
+    .map(Number);
+  return [...new Set(ids)];
+}
+
+/** 校验并规范化用户输入；"-" 表示清空（仅 idlist）。 */
 export function parseValue(field: Field, input: string): { ok: true; value: string } | { ok: false; error: string } {
   const s = input.trim();
   switch (field.type) {
@@ -93,9 +102,6 @@ export function parseValue(field: Field, input: string): { ok: true; value: stri
       if (field.max !== undefined && n > field.max) return { ok: false, error: `不能大于 ${field.max}` };
       return { ok: true, value: String(n) };
     }
-    case "id":
-      if (s === "-" || s === "") return { ok: true, value: "" };
-      return /^-?\d+$/.test(s) ? { ok: true, value: s } : { ok: false, error: "请输入数字 ID，或 - 清空" };
     case "idlist": {
       if (s === "-" || s === "") return { ok: true, value: "" };
       const ids = s.split(/[\s,，]+/).filter(Boolean);
@@ -112,18 +118,14 @@ function num(value: string, fallback: number): number {
 
 export function resolveConfig(raw: RawConfig): Config {
   return {
-    allowedChatIds: new Set(
-      raw.ALLOWED_CHAT_IDS.split(/[\s,]+/)
-        .filter(Boolean)
-        .map(Number),
-    ),
+    allowedChatIds: new Set(parseIdList(raw.ALLOWED_CHAT_IDS)),
     systemPrompt: raw.SYSTEM_PROMPT,
     model: raw.MODEL || "gemini-4-argon",
     thinkingLevel: raw.THINKING_LEVEL || "low",
     maxOutputTokens: num(raw.MAX_OUTPUT_TOKENS, 2048),
     maxInputChars: num(raw.MAX_INPUT_CHARS, 8000),
     maxReplyChars: num(raw.MAX_REPLY_CHARS, 4000),
-    billingChatId: raw.BILLING_CHAT_ID.trim() ? Number(raw.BILLING_CHAT_ID) : null,
+    billingChatIds: parseIdList(raw.BILLING_CHAT_ID),
     priceInputPerM: num(raw.PRICE_INPUT_PER_M, 0),
     priceOutputPerM: num(raw.PRICE_OUTPUT_PER_M, 0),
     priceCachedPerM: num(raw.PRICE_CACHED_PER_M, 0),
@@ -158,7 +160,7 @@ export async function setOverride(env: Env, key: ConfigKey, value: string | null
   await env.KV.put(OVERRIDES_KEY, JSON.stringify(overrides));
 }
 
-export function adminId(env: Env): number | null {
-  const s = String(env.ADMIN_USER_ID ?? "").trim();
-  return /^-?\d+$/.test(s) ? Number(s) : null;
+/** ADMIN_USER_ID 支持逗号分隔的多个管理员。 */
+export function adminIds(env: Env): Set<number> {
+  return new Set(parseIdList(String(env.ADMIN_USER_ID ?? "")));
 }

@@ -1,7 +1,7 @@
 import { InlineKeyboard, type CallbackQueryContext, type CommandContext, type Context } from "grammy";
-import { formatUsd, getTotals, resetTotals } from "./billing";
+import { formatUsd, getTotals, resetTotals, sendToBillingChats } from "./billing";
 import {
-  adminId,
+  adminIds,
   FIELDS,
   fieldAt,
   fieldIndex,
@@ -38,9 +38,8 @@ async function putSession(kv: KVNamespace, chatId: number, messageId: number, s:
 
 /** 私聊校验 chat id，群聊校验 user id。 */
 export function isAdmin(env: Env, chat: { id: number; type: string }, fromId: number | undefined): boolean {
-  const admin = adminId(env);
-  if (admin === null) return false;
-  return chat.type === "private" ? chat.id === admin : fromId === admin;
+  const admins = adminIds(env);
+  return admins.has(chat.type === "private" ? chat.id : (fromId ?? NaN));
 }
 
 function display(value: string): string {
@@ -55,9 +54,7 @@ function closeRow(kb: InlineKeyboard, back?: string): InlineKeyboard {
 function hint(field: Field): string {
   switch (field.type) {
     case "idlist":
-      return "多个 ID 用逗号分隔（群 ID 通常以 -100 开头），发送 - 清空。";
-    case "id":
-      return "数字 chat ID，发送 - 清空（不推送）。";
+      return "多个 ID 用逗号分隔（群 ID 通常以 -100 开头；用户 ID 为正数，需先私聊 Bot 点 Start），发送 - 清空。";
     case "int":
       return `整数，范围 ${field.min} ~ ${field.max}。`;
     case "float":
@@ -132,7 +129,7 @@ async function renderBilling(kv: KVNamespace, confirmReset = false, notice?: str
   const t = await getTotals(kv);
   const kb = new InlineKeyboard();
   if (confirmReset) kb.text("⚠️ 确认清零", "c:by").text("取消", "c:b").row();
-  else kb.text("🗑 清零", "c:bc").row();
+  else kb.text("📨 测试推送", "c:bt").text("🗑 清零", "c:bc").row();
   closeRow(kb, "c:h");
   const text = [
     "<b>🧾 计费统计</b>",
@@ -215,6 +212,15 @@ export async function handlePanelCallback(ctx: CallbackQueryContext<Context>, en
     case "bc":
       view = await renderBilling(env.KV, true);
       break;
+    case "bt": {
+      const { config } = await loadConfig(env);
+      const results = await sendToBillingChats(ctx.api, config, "🧾 xdjx 计费推送测试");
+      const lines = results.map((r) =>
+        r.error ? `❌ <code>${r.chatId}</code>：${escapeHtml(r.error)}` : `✅ <code>${r.chatId}</code>`,
+      );
+      view = await renderBilling(env.KV, false, lines.length ? `\n${lines.join("\n")}` : "⚠️ 未配置计费推送 chat");
+      break;
+    }
     case "by":
       await resetTotals(env.KV);
       toast = "已清零";

@@ -29,10 +29,11 @@ describe("config", () => {
     const raw = mergeConfig(defaults, { MODEL: "gemini-3.8-flash", BILLING_CHAT_ID: "-42" });
     const cfg = resolveConfig(raw);
     expect(cfg.model).toBe("gemini-3.8-flash");
-    expect(cfg.billingChatId).toBe(-42);
+    expect(cfg.billingChatIds).toEqual([-42]);
     expect(cfg.allowedChatIds.has(-1002)).toBe(true);
     expect(cfg.maxOutputTokens).toBe(2048);
-    expect(resolveConfig(defaults).billingChatId).toBeNull();
+    expect(resolveConfig(defaults).billingChatIds).toEqual([]);
+    expect(resolveConfig({ ...defaults, ALLOWED_CHAT_IDS: "-1，-2, x" }).allowedChatIds).toEqual(new Set([-1, -2]));
   });
 
   it("validates input per field type", () => {
@@ -43,7 +44,7 @@ describe("config", () => {
     expect(parseValue(field("ALLOWED_CHAT_IDS"), "-1, -2，-2 -3")).toEqual({ ok: true, value: "-1,-2,-3" });
     expect(parseValue(field("ALLOWED_CHAT_IDS"), "-")).toEqual({ ok: true, value: "" });
     expect(parseValue(field("ALLOWED_CHAT_IDS"), "abc").ok).toBe(false);
-    expect(parseValue(field("BILLING_CHAT_ID"), "-100123")).toEqual({ ok: true, value: "-100123" });
+    expect(parseValue(field("BILLING_CHAT_ID"), "-100123, 5")).toEqual({ ok: true, value: "-100123,5" });
     expect(parseValue(field("MODEL"), "my-model-1.0")).toEqual({ ok: true, value: "my-model-1.0" });
     expect(parseValue(field("THINKING_LEVEL"), "ultra").ok).toBe(false);
     expect(parseValue(field("SYSTEM_PROMPT"), "  ").ok).toBe(false);
@@ -105,6 +106,10 @@ describe("config panel", () => {
     expect(isAdmin(env, { id: -100, type: "supergroup" }, 42)).toBe(true);
     expect(isAdmin(env, { id: -100, type: "supergroup" }, 7)).toBe(false);
     expect(isAdmin({ ADMIN_USER_ID: "" } as unknown as Env, { id: 42, type: "private" }, 42)).toBe(false);
+    const multi = { ADMIN_USER_ID: "42, 43" } as unknown as Env;
+    expect(isAdmin(multi, { id: 43, type: "private" }, 43)).toBe(true);
+    expect(isAdmin(multi, { id: -100, type: "supergroup" }, 43)).toBe(true);
+    expect(isAdmin(multi, { id: -100, type: "supergroup" }, undefined)).toBe(false);
   });
 
   it("keeps callback data within 64 bytes and marks overrides", () => {

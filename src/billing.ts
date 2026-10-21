@@ -1,7 +1,7 @@
 import type { Api } from "grammy";
 import type { Config } from "./config";
 import type { GeminiUsage } from "./gemini";
-import { ignoreErrors, splitText } from "./telegram";
+import { splitText } from "./telegram";
 
 const TOTAL_KEY = "bill:total";
 
@@ -102,9 +102,24 @@ export function formatBillingLog(log: BillingLog): string {
   return lines.join("\n");
 }
 
-export async function pushBillingLog(api: Api, config: Config, log: BillingLog): Promise<void> {
-  if (config.billingChatId === null) return;
-  for (const chunk of splitText(formatBillingLog(log), 8000)) {
-    await ignoreErrors(api.sendMessage(config.billingChatId, chunk, { link_preview_options: { is_disabled: true } }));
+/** 向每个计费 chat 发送文本；返回发送失败的 chat 及原因（同时打到日志）。 */
+export async function sendToBillingChats(api: Api, config: Config, text: string): Promise<Array<{ chatId: number; error?: string }>> {
+  const results: Array<{ chatId: number; error?: string }> = [];
+  for (const chatId of config.billingChatIds) {
+    try {
+      for (const chunk of splitText(text, 8000)) {
+        await api.sendMessage(chatId, chunk, { link_preview_options: { is_disabled: true } });
+      }
+      results.push({ chatId });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      console.error(`billing push to ${chatId} failed:`, error);
+      results.push({ chatId, error });
+    }
   }
+  return results;
+}
+
+export async function pushBillingLog(api: Api, config: Config, log: BillingLog): Promise<void> {
+  await sendToBillingChats(api, config, formatBillingLog(log));
 }
